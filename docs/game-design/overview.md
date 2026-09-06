@@ -318,9 +318,25 @@ Axial coordinates are the current preferred representation:
 (q, r)
 ```
 
-The coordinate/topology of a tile is expected to remain stable during a match.
+Spatial distance should be reasoned about as hex-tile or graph distance under the map topology, rather than as Euclidean or presentation-space distance. Conceptually:
 
-The physical state of the tile may change.
+```text
+origin tile
+    ↓
+adjacent tiles
+    ↓
+successive hex-distance rings
+```
+
+A tile's spatial distance from another tile is therefore the number of neighboring hex-grid steps that separate them under that topology. Axial coordinates identify tiles; they do not by themselves define a movement cost or whether a destination is reachable.
+
+The exact canonical distance formula, coordinate library, and other implementation choices remain intentionally unfrozen.
+
+The coordinate and topology of a tile are expected to remain stable during a match. Normal hex distance between two coordinates may therefore remain stable as well.
+
+The physical state of tiles and connections may change, so stable hex distance does not imply stable reachability or movement cost.
+
+Hex-distance rings may later prove useful for area of effect, visibility, detection, influence, communication, event radius, or other spatial mechanics. These are future design possibilities, not current mechanics or new domain entities.
 
 ## 14. Tile Definition and Tile State
 
@@ -598,7 +614,25 @@ A primary attack profile may conceptually involve:
 - maximum range;
 - allowed target classes.
 
-Attack range uses a minimum and maximum. Illustratively, direct combat might use minimum 1 and maximum 1, while ranged artillery might use minimum 2 and maximum 3. These examples do not freeze the ranges of any unit.
+Attack range uses conceptual `min_range` and `max_range` values expressed as valid hex distances from the attacker's tile. A target is spatially eligible only when its hex distance from the attacker falls within the permitted range, subject to every other targeting, combat, and Ruleset constraint.
+
+Illustratively:
+
+- `min_range = 1`, `max_range = 1` describes adjacent tiles only;
+- `min_range = 2`, `max_range = 3` describes tiles in the second and third hex-distance rings.
+
+These are examples only and do not assign ranges to any concrete `UnitDefinition`. Conceptually, a range may describe one distance ring, several consecutive rings, or another Ruleset-defined subset of otherwise valid tiles. This does not imply a generalized spatial-query system.
+
+Range and targeting remain independent dimensions of attack eligibility:
+
+```text
+spatially in range
+AND valid TargetClass
+AND applicable combat and Ruleset constraints
+→ target may be attackable
+```
+
+Being inside the valid attack range is necessary but does not by itself make the target attackable.
 
 Movement range and attack range are separate concepts and are not implicitly coupled.
 
@@ -734,7 +768,7 @@ evaluate retaliation eligibility
 if eligible, defensive-response damage to attacker
 ```
 
-Retaliation occurs only when the defender survives the initial damage, the attacker is within the defender's effective attack range, the attacker belongs to a TargetClass the defender can normally target, and all other relevant rules permit the response. Targeting restrictions remain preserved.
+Retaliation occurs only when the defender survives the initial damage, the attacker's hex distance falls within the defender's valid attack range, the attacker belongs to a TargetClass the defender can normally target, and all other relevant rules permit the response. Targeting restrictions remain preserved independently from spatial range.
 
 The defender retaliates using its state after receiving the initial attack. A destroyed defender does not retaliate; damage sustained from the first strike may reduce the surviving defender's response effectiveness.
 
@@ -804,7 +838,51 @@ Exact health, readiness, ammo, and experience weighting formulas remain undefine
 
 ## 26. Movement
 
-Movement should be evaluated through the relationship between the moving unit, the connection crossed, the destination tile, and current world state.
+Movement range is not attack range. Attack range evaluates spatial eligibility between an attacker and a target; movement is a traversal problem through the mutable world.
+
+A movement path traverses a sequence of neighboring tiles through their Connections:
+
+```text
+origin
+  ↓
+Connection
+  ↓
+tile
+  ↓
+Connection
+  ↓
+tile
+  ...
+  ↓
+destination
+```
+
+Movement should be evaluated through the relationship among the moving unit, every Connection crossed, intermediate and destination `TileState`, and current world state. A destination being within a unit's nominal spatial or movement distance does not automatically mean that the unit can reach it.
+
+Traversal may depend on:
+
+- the `UnitDefinition` and its movement capabilities;
+- the sequence of Connections crossed;
+- intermediate and destination `TileState`;
+- terrain;
+- infrastructure;
+- blockage;
+- events;
+- readiness;
+- posture;
+- other occupants;
+- Ruleset constraints;
+- other contextual modifiers.
+
+Conceptually, these remain distinct:
+
+```text
+hex distance     → topological separation between tiles
+traversable path → a valid sequence through current world state
+movement cost    → the cost of following that path in its context
+```
+
+A path may be valid or invalid, more or less costly, and affected by world state. Two destinations at the same hex distance may therefore have different movement costs, or one may be unreachable.
 
 Conceptually:
 
@@ -819,9 +897,11 @@ exposure
 effects
 ```
 
-Movement cost may eventually depend on terrain interaction, connection modifiers, events, and unit-specific modifiers.
+Coordinates do not make Connections redundant. Hex distance belongs to stable spatial topology, while traversal operates through first-class Connections whose passability, infrastructure, damage, blockage, temporary modifiers, or movement consequences may change.
 
-No formula is currently frozen.
+The same origin and destination may retain the same topological hex distance while bridge destruction, flooding, blockage, terrain modification, event effects, or other world changes alter the available route or its cost. These examples do not establish exact mechanics.
+
+No movement-cost formula or path-validation procedure is currently frozen.
 
 ## 27. Actions and World Mutation
 
@@ -883,6 +963,7 @@ The following areas remain intentionally unresolved:
 - victory-condition model;
 - exact ruleset boundaries;
 - tile behavior exactly at sea level;
+- exact canonical hex-distance formula;
 - terrain-editing mechanics and costs;
 - final structure taxonomy and the capabilities of each initial family;
 - construction, repair, upgrade, disablement, capture, and destruction mechanics;
@@ -893,6 +974,10 @@ The following areas remain intentionally unresolved:
 - how settlement acceptance changes and what consequences it has;
 - how capitals are designated and what their capture or loss means under a ruleset;
 - connection infrastructure types;
+- movement-cost model;
+- traversal and path-validation rules;
+- how movement range interacts with movement cost;
+- whether some future mechanics use non-contiguous range areas rather than simple minimum/maximum rings;
 - capacity and stacking rules for units;
 - final unit taxonomy and the base infantry reference profile;
 - final TargetClass taxonomy;
