@@ -1,7 +1,7 @@
 # Aces — Game Design Overview
 
 **Status:** Exploratory  
-**Last reviewed:** 2026-09-05
+**Last reviewed:** 2026-09-06
 
 > This document captures the current conceptual model of Aces.
 > It is a working design checkpoint, not a frozen specification.
@@ -540,7 +540,7 @@ Capital status is not a hardcoded settlement subtype. It belongs to a `MatchPoli
 
 Under the provisional single-slot rule described above, a Settlement and a Structure cannot occupy the same tile as primary elements. The design may later evolve toward separate settlement and infrastructure occupancy if gameplay requires it.
 
-## 21. Units and Tile Occupancy
+## 21. Units, Profiles, Targeting, and Tile Occupancy
 
 Units preserve the distinction between persistent definition and runtime state:
 
@@ -560,18 +560,51 @@ UnitInstance
 ├── health
 ├── readiness
 ├── ammo
-├── experience progress / steps
+├── experience progress
 ├── rank
+├── posture
 └── runtime state
 ```
 
 Every `UnitInstance` has a `MatchPolity` owner; that owner is not absent for neutral or autonomous units and is never an individual `User`. Operational control remains separate from ownership.
 
-Health is an abstract percentage of remaining integrity or combat capacity. It does not encode the visual quantity of soldiers, vehicles, aircraft, or other represented elements. Presentation determines how a health percentage appears visually.
+Health is an abstract percentage of remaining formation integrity or capacity. It does not encode the visual quantity of soldiers, vehicles, aircraft, or other represented elements. Presentation determines how a health percentage appears visually.
 
-Effectiveness is not identical to health. Health may contribute to contextual effectiveness alongside readiness, experience, rank, terrain, events, and other ruleset-defined factors.
+`Readiness` replaces the earlier ambiguous term `stamina` and represents operational sustainment such as fuel, general supplies, fatigue, and maintenance. `Ammo` is separate state representing specialized offensive capability.
 
-`Readiness` replaces the earlier ambiguous term `stamina`. Readiness abstracts fuel, general supplies, fatigue, and maintenance. `Ammo` is separate state representing specialized offensive capability.
+### Target Classes
+
+A unit's identity or family is distinct from the broader class used for targeting and combat interaction. A `UnitDefinition` and its `TargetClass` are therefore not assumed to be the same concept.
+
+Exploratory examples of target classes include:
+
+- infantry;
+- light_ground;
+- heavy_ground;
+- air;
+- naval;
+- structure.
+
+This vocabulary is not a frozen taxonomy. Its purpose is to let targeting and damage rules operate over meaningful broad categories without requiring a distinct hardcoded pairing for every combination of UnitDefinitions.
+
+### Attack and Defense Profiles
+
+For the initial ruleset, a `UnitDefinition` may be treated as having one primary attack profile. This is a simplifying assumption, not a permanent restriction; the model may support multiple attacks or weapons later if concrete gameplay needs justify them.
+
+A primary attack profile may conceptually involve:
+
+- base offensive power;
+- minimum range;
+- maximum range;
+- allowed target classes.
+
+Attack range uses a minimum and maximum. Illustratively, direct combat might use minimum 1 and maximum 1, while ranged artillery might use minimum 2 and maximum 3. These examples do not freeze the ranges of any unit.
+
+Movement range and attack range are separate concepts and are not implicitly coupled.
+
+A conceptual defense profile may provide baseline defensive resistance and interaction with TargetClass. Offensive capability and defensive resistance remain distinguishable concerns. Armor systems and damage types are intentionally deferred until a concrete design need demonstrates their value.
+
+### Tile Occupancy
 
 A tile may contain zero or more units.
 
@@ -581,7 +614,7 @@ occupants: 0..n
 
 A fixed `max_units` value is not currently assumed.
 
-Whether a unit may enter or remain in a tile may instead depend on terrain, connection, unit type, structure, events, ruleset, and other occupants.
+Whether a unit may enter or remain in a tile may instead depend on terrain, connection, unit definition, structure, events, ruleset, and other occupants.
 
 A future interaction may therefore resemble:
 
@@ -591,7 +624,7 @@ CanEnter(unit, tile)
 
 Detailed unit taxonomy, capabilities, and balance remain outside the current checkpoint.
 
-## 22. Readiness
+## 22. Readiness and Unit Posture
 
 Readiness has a floor of zero:
 
@@ -607,7 +640,27 @@ The provisional first-ruleset behavior is:
 - A unit at zero readiness may still attack an immediately adjacent valid target.
 - A unit at zero readiness may still defend.
 
-Exact readiness consumption, recovery, health degradation, timing, and other balance formulas remain undefined.
+Low readiness progressively reduces combat effectiveness. This does not mean that every small reduction from maximum readiness must cause a meaningful combat penalty.
+
+Readiness may conceptually be interpreted through ranges such as operational, degraded, critical, and exhausted. These are exploratory labels for derived conditions, not necessarily separate state stored in addition to readiness.
+
+The intended behavior is that a healthy or normal readiness range produces little or no meaningful combat penalty, lower readiness progressively degrades combat effectiveness, and zero readiness represents exhaustion together with the severe operational constraints already described.
+
+Exact readiness consumption, recovery, zero-readiness health degradation, effectiveness thresholds, and curves remain undefined.
+
+`UnitPosture` is provisional runtime state of a `UnitInstance`, not a separate `UnitDefinition`. The current posture vocabulary is:
+
+```text
+UnitPosture
+├── Maneuver
+└── Defensive
+```
+
+`Maneuver` is the baseline operational posture. Conceptually, it provides normal incoming-damage behavior, normal or full movement capability subject to other rules, standard movement readiness cost, and higher passive or base readiness consumption relative to `Defensive`.
+
+`Defensive` conceptually provides increased resistance to incoming damage, lower passive or base readiness consumption, reduced movement capability, increased readiness cost when moving, and potentially reduced offensive effectiveness.
+
+No exact posture bonuses, penalties, percentages, or thresholds are defined. It also remains open whether posture may be selected after movement, at the beginning or end of an action window, or at another ruleset-defined point. Whether voluntarily attacking while `Defensive` changes posture or instead applies an offensive penalty is also unresolved.
 
 ## 23. Ammo and Fallback Combat
 
@@ -615,7 +668,7 @@ With ammo above zero, a unit uses its normal combat profile. With zero ammo, it 
 
 Fallback combat uses the base infantry unit's offensive capability as the reference floor. Base infantry is currently envisioned as the cheapest unit and the lowest base-damage reference in the game, but neither exact values nor the full unit catalog are frozen.
 
-Fallback combat preserves all normal targeting restrictions. Running out of ammo never allows a unit to target a class it could not normally target.
+Fallback combat preserves normal range and TargetClass restrictions. Running out of ammo never allows a unit to target a class it could not normally target.
 
 Initiating an offensive fallback attack consumes health and readiness. Defending at zero ammo remains possible and does not incur that additional offensive fallback cost.
 
@@ -623,19 +676,133 @@ If both ammo and readiness are zero, a unit may still initiate fallback combat w
 
 Exact fallback damage, health cost, readiness cost, and related formulas remain undefined.
 
-## 24. Experience and Ranks
+## 24. Combat Effectiveness and Retaliation
 
-Any offensive or defensive combat interaction that causes more than zero damage grants experience progress. Destroying the target is not required.
+Combat effectiveness emerges from distinct contributors rather than from any one state value. The current conceptual contributors include:
 
-For the current provisional rule, each qualifying combat interaction grants one experience step or progress event regardless of the amount of damage caused. Damage-weighted experience remains a possible future alternative, not a current rule.
+- the UnitDefinition's attack and defense profiles;
+- health;
+- readiness;
+- rank;
+- posture;
+- terrain;
+- events and other contextual modifiers.
 
-Defensive combat currently grants no bonus beyond the normal progress for a qualifying combat interaction. A defensive bonus may be reconsidered during balancing.
+Their responsibilities remain separate:
 
-Experience progress and rank are separate concepts. The rank hierarchy supports N ranks, and progression through that hierarchy is strictly sequential. Exact thresholds and rank modifiers remain undefined.
+- health represents remaining formation integrity or capacity;
+- readiness represents operational sustainment such as fuel, supplies, fatigue, and maintenance;
+- rank represents accumulated combat experience and veteran efficiency;
+- posture represents the unit's current tactical operating mode;
+- terrain, events, and context modify the circumstances in which the unit operates.
 
-The brainstorm's distinction between consecutive and lifetime combat progress remains an open design question rather than a frozen rule. Experience transfer when units merge is also unresolved.
+Health contributes progressively to combat effectiveness but is not identical to it. The agreed relationship is sublinear rather than strictly one-to-one: full health corresponds to full health-derived effectiveness, a unit at 50% health retains meaningfully more than 50% of its offensive capability, effectiveness still declines as health falls, and zero health means the unit is destroyed. This is intended to keep damaged units relevant for longer and reduce excessive snowballing. No mathematical curve or intermediate percentages are frozen.
 
-## 25. Movement
+Illustratively:
+
+```text
+effective attack
+← base attack profile
+← health factor
+← readiness factor
+← rank modifier
+← posture modifier
+← contextual modifiers
+
+effective defense
+← base defense profile
+← health factor
+← readiness factor
+← rank modifier
+← posture modifier
+← contextual modifiers
+```
+
+This relationship is conceptual, not a final formula, and does not require the factors to combine multiplicatively.
+
+Retaliation is currently a reactive consequence of an attack, not a separate voluntary action selected by the defending player:
+
+```text
+Attack
+  ↓
+primary damage to defender
+  ↓
+defender state changes
+  ↓
+evaluate retaliation eligibility
+  ↓
+if eligible, defensive-response damage to attacker
+```
+
+Retaliation occurs only when the defender survives the initial damage, the attacker is within the defender's effective attack range, the attacker belongs to a TargetClass the defender can normally target, and all other relevant rules permit the response. Targeting restrictions remain preserved.
+
+The defender retaliates using its state after receiving the initial attack. A destroyed defender does not retaliate; damage sustained from the first strike may reduce the surviving defender's response effectiveness.
+
+The same broader action-and-consequence model may later support other reactive effects, but defensive fire, mines, interception, fortifications, and similar possibilities are not current mechanics.
+
+Exact attack, defense, damage, and retaliation calculations remain undefined.
+
+## 25. Experience, Ranks, and Unit Merge
+
+### Experience Progression
+
+Any offensive or defensive combat interaction that causes more than zero damage grants one experience progress event or step. Destroying the target is not required. Under the initial ruleset, damage amount does not change the progress gained, and a qualifying defensive interaction grants the same progress as a qualifying offensive interaction unless later balancing changes this.
+
+Experience progress and rank are separate concepts. Progress applies toward the next rank in an N-rank sequential hierarchy. When the next threshold is reached, the unit advances exactly one sequential rank and begins progress toward the following rank.
+
+A rank may conceptually have sequential order, an experience threshold, and modifiers, without freezing a final rank-definition model. Exact thresholds remain undefined and ruleset-configurable.
+
+The brainstorm's distinction between consecutive and lifetime combat progress does not drive active rank progression in the initial ruleset. Lifetime combat participation may still be retained as historical or statistical information.
+
+### Rank Effects
+
+Rank primarily represents veteran combat effectiveness. Higher rank primarily improves offensive and defensive effectiveness relative to the unit's own base profile; it does not grant absolute power unrelated to its `UnitDefinition`.
+
+By default, rank does not increase maximum health, maximum readiness, maximum ammo, or movement range. More generally:
+
+> Rank does not normally increase capacities; rank may improve efficiency.
+
+Future design may explore small operational-efficiency benefits, such as slightly more efficient readiness consumption or subtle improvements related to logistics, resupply, repair, fallback costs, or comparable systems. These are possibilities rather than first-ruleset commitments. They should remain subtle rather than turning rank into a broad collection of large bonuses, and should not increase base resource capacities merely because a unit is more experienced.
+
+No numeric rank modifiers are currently defined.
+
+### Unit Merge
+
+A merge represents consolidation of two compatible formations into one resulting `UnitInstance`.
+
+For the initial ruleset, two units may merge only when they share the same `UnitDefinition`, have the same `MatchPolity` owner, occupy the same tile, and the `Ruleset` permits the merge:
+
+```text
+CanMerge(A, B)
+```
+
+This is conceptual validation, not an implementation interface. Heterogeneous combinations such as infantry with a tank are not part of the current merge model.
+
+The resulting unit retains the shared `UnitDefinition`, `MatchPolity` owner, and tile. Its state accounts for the effective contribution of both source formations. Health, readiness, ammo, and experience are not blindly summed as percentages; for example, 70% readiness and 60% readiness do not become 130% readiness.
+
+Merged health cannot exceed the normal maximum capacity of the shared `UnitDefinition` unless a future rule explicitly permits it. The handling of excess source health or capacity remains unresolved: it might be discarded, cause only a partial merge, cause the merge to be rejected, or remain as residual strength in a second unit.
+
+Readiness and ammo are combined proportionally to the effective contribution of each source formation rather than added as raw percentages. Exact formulas remain open.
+
+Experience that survives a merge is likewise proportional to how much of the resulting formation came from each source. A small veteran component does not automatically confer its full rank on a much larger inexperienced component, while meaningful veteran contribution should not simply disappear.
+
+Conceptually, merge resolution may use:
+
+```text
+rank + progress
+        ↓
+temporary cumulative experience representation
+        ↓ weighted by formation contribution
+merged experience
+        ↓
+resolved back into rank + progress
+```
+
+The cumulative representation is a conceptual merge-resolution tool, not necessarily another persistent attribute of `UnitInstance`. Rank and progress remain the canonical experience state; no separate permanent veterancy value is currently introduced.
+
+Exact health, readiness, ammo, and experience weighting formulas remain undefined.
+
+## 26. Movement
 
 Movement should be evaluated through the relationship between the moving unit, the connection crossed, the destination tile, and current world state.
 
@@ -656,7 +823,7 @@ Movement cost may eventually depend on terrain interaction, connection modifiers
 
 No formula is currently frozen.
 
-## 26. Actions and World Mutation
+## 27. Actions and World Mutation
 
 Combat should not be treated as the only meaningful state-changing action.
 
@@ -691,7 +858,7 @@ new world state
 
 This is both a gameplay model and one of the broader abstractions Aces intends to explore.
 
-## 27. Events
+## 28. Events
 
 Events remain part of the conceptual model but are not yet deeply specified.
 
@@ -703,7 +870,7 @@ Events may create temporary or lasting world mutations.
 
 Their exact lifecycle and scope remain open.
 
-## 28. Current Open Questions
+## 29. Current Open Questions
 
 The following areas remain intentionally unresolved:
 
@@ -728,12 +895,23 @@ The following areas remain intentionally unresolved:
 - connection infrastructure types;
 - capacity and stacking rules for units;
 - final unit taxonomy and the base infantry reference profile;
-- combat targeting, effectiveness, and damage formulas;
+- final TargetClass taxonomy;
+- exact attack, defense, damage, and retaliation calculations;
+- exact health-effectiveness curve;
+- exact readiness-effectiveness curve and thresholds;
 - readiness consumption, recovery, and zero-readiness health degradation;
 - ammo consumption and replenishment;
 - fallback combat costs and damage formulas;
-- experience thresholds, rank modifiers, and whether progress is consecutive or lifetime-based;
-- experience transfer when units merge;
+- exact experience thresholds and rank modifiers;
+- exact operational-efficiency benefits from rank, if any;
+- merge formulas and excess health or capacity behavior;
+- exact readiness and ammo weighting during merge;
+- exact experience weighting during merge;
+- resulting posture and treatment of other runtime state during merge;
+- posture-change timing and exact `Defensive` bonuses and penalties;
+- whether voluntarily attacking while `Defensive` changes posture;
+- whether and when multiple attacks or weapons are introduced;
+- damage types, if a concrete gameplay need emerges;
 - resources and economy;
 - logistics and communication networks;
 - event lifecycle;
@@ -742,7 +920,7 @@ The following areas remain intentionally unresolved:
 
 These questions should be resolved progressively through game-design iteration rather than prematurely frozen.
 
-## 29. Current Design Direction
+## 30. Current Design Direction
 
 ```text
 Persistent Definitions
@@ -751,6 +929,10 @@ Persistent Definitions
 ├── MapDefinition
 ├── StructureDefinition
 └── UnitDefinition
+    ├── target class
+    ├── primary attack profile (initially)
+    ├── defense profile
+    └── movement / capacity-related definition
 
 Runtime Match
 ├── MatchPolities (human- or NPC-controlled)
@@ -763,11 +945,22 @@ Runtime Match
 │   ├── StructureInstances
 │   ├── Settlements
 │   ├── UnitInstances
+│   │   ├── owner: MatchPolity
+│   │   ├── position
+│   │   ├── health
+│   │   ├── readiness
+│   │   ├── ammo
+│   │   ├── experience progress
+│   │   ├── rank
+│   │   ├── posture
+│   │   └── runtime state
 │   └── Events
 ├── TurnState
 ├── Ruleset
 └── Outcome
 ```
+
+Merge remains an interaction between compatible UnitInstances that produces one consolidated UnitInstance, rather than a new persistent entity in this structural summary.
 
 The central design principle remains:
 
