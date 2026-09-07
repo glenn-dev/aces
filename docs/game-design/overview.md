@@ -1,7 +1,7 @@
 # Aces — Game Design Overview
 
 **Status:** Exploratory  
-**Last reviewed:** 2026-09-06
+**Last reviewed:** 2026-09-07
 
 > This document captures the current conceptual model of Aces.
 > It is a working design checkpoint, not a frozen specification.
@@ -802,39 +802,86 @@ No numeric rank modifiers are currently defined.
 
 ### Unit Merge
 
-A merge represents consolidation of two compatible formations into one resulting `UnitInstance`.
-
-For the initial ruleset, two units may merge only when they share the same `UnitDefinition`, have the same `MatchPolity` owner, occupy the same tile, and the `Ruleset` permits the merge:
+A Merge is an explicit, directed operational action that consolidates one compatible formation into another:
 
 ```text
-CanMerge(A, B)
+source UnitInstance
+        ↓ Merge
+target UnitInstance
 ```
 
-This is conceptual validation, not an implementation interface. Heterogeneous combinations such as infantry with a tank are not part of the current merge model.
+The target is the continuing formation. It retains its runtime identity rather than Merge normally creating a third unit through symmetric `A + B → new C` semantics. A future `Ruleset` could explicitly introduce different semantics, but they are not part of the current model.
 
-The resulting unit retains the shared `UnitDefinition`, `MatchPolity` owner, and tile. Its state accounts for the effective contribution of both source formations. Health, readiness, ammo, and experience are not blindly summed as percentages; for example, 70% readiness and 60% readiness do not become 130% readiness.
+Merge eligibility remains conceptual validation rather than an implementation interface. The source and target must share the same `UnitDefinition`, have the same `MatchPolity` owner, occupy the same tile, and be permitted to merge by the `Ruleset`. Heterogeneous combinations such as infantry with a tank are not part of the current Merge model.
 
-Merged health cannot exceed the normal maximum capacity of the shared `UnitDefinition` unless a future rule explicitly permits it. The handling of excess source health or capacity remains unresolved: it might be discarded, cause only a partial merge, cause the merge to be rejected, or remain as residual strength in a second unit.
+The target may absorb source contribution only up to its normal capacities. Merge must not implicitly create over-capacity state. For health:
 
-Readiness and ammo are combined proportionally to the effective contribution of each source formation rather than added as raw percentages. Exact formulas remain open.
+```text
+target.health <= target.max_health
+```
 
-Experience that survives a merge is likewise proportional to how much of the resulting formation came from each source. A small veteran component does not automatically confer its full rank on a much larger inexperienced component, while meaningful veteran contribution should not simply disappear.
+If the target cannot absorb the entire source formation, the Merge may be partial. The amount actually incorporated into the target determines the source contribution that was absorbed. Exact arithmetic and rounding remain undefined.
 
-Conceptually, merge resolution may use:
+Two conceptual remainder policies govern what happens to an unabsorbed source contribution. Their working names do not freeze implementation vocabulary:
+
+- `KEEP_REMAINDER` is the default. The target absorbs only what it can receive. If source contribution remains, the source `UnitInstance` continues to exist with its own runtime identity and posture, together with the proportional composition, resources, experience, and other state associated with the remaining formation.
+- `DISBAND_REMAINDER` is an explicit player decision, not an automatic threshold behavior. The target absorbs the health contribution it can receive, after which the remaining source formation is deliberately disbanded and the source `UnitInstance` ceases to exist. No source-health threshold automatically selects this policy.
+
+Health, Readiness, and Ammo retain different meanings during Merge:
+
+- Health represents formation integrity and remaining capacity. The target receives health only up to its normal maximum. Under `KEEP_REMAINDER`, unabsorbed health remains with the source. Under `DISBAND_REMAINDER`, unabsorbed source health is lost when the remainder is disbanded.
+- Readiness represents general operational preparedness, including abstractions such as fuel, general supplies, fatigue, maintenance, and operational condition. It remains separate from Ammo.
+- Ammo represents specialized offensive capability and ammunition availability. It remains separate from Readiness.
+
+Under `KEEP_REMAINDER`, Readiness and Ammo contributions transfer proportionally with the part of the source formation actually absorbed. The surviving source retains the corresponding contribution associated with its remaining formation.
+
+`DISBAND_REMAINDER` intentionally has different resource semantics. All transferable specialized ammunition from the source becomes available to the target, as does all transferable or recoverable operational contribution represented through Readiness. This describes recovery and consolidation of operational contribution and resources; it does not imply that literal fatigue or maintenance state moves physically between formations. Both attributes remain bounded by the target's normal capacities:
+
+```text
+target.readiness <= target.max_readiness
+target.ammo <= target.max_ammo
+```
+
+Any Readiness or Ammo contribution that the target cannot accommodate is lost unless a future `Ruleset` defines an explicit recovery or storage mechanism. No such mechanism is introduced here. Exact transfer, consolidation, and rounding calculations remain undefined.
+
+Experience follows the part of the formation actually absorbed rather than behaving like recoverable supplies. Under both remainder policies, only experience corresponding to the absorbed source contribution joins the target. The target's resulting experience reflects its existing formation together with the source contribution actually incorporated; a small veteran contribution does not make a large novice formation fully veteran.
+
+Under `KEEP_REMAINDER`, the surviving source retains the experience associated with its remaining composition, and its resulting rank and progress may therefore need to be recalculated. Under `DISBAND_REMAINDER`, experience associated with the discarded source remainder is lost rather than transferred to the target.
+
+Conceptually, Merge resolution may use:
 
 ```text
 rank + progress
         ↓
 temporary cumulative experience representation
-        ↓ weighted by formation contribution
-merged experience
+        ↓ contribution-aware combination
+resulting experience
         ↓
-resolved back into rank + progress
+resulting rank + progress
 ```
 
-The cumulative representation is a conceptual merge-resolution tool, not necessarily another persistent attribute of `UnitInstance`. Rank and progress remain the canonical experience state; no separate permanent veterancy value is currently introduced.
+The cumulative representation is only a conceptual Merge-resolution technique. Rank and progress remain the canonical experience state; no separate persisted veterancy value is introduced. Exact experience weighting and recalculation remain undefined.
 
-Exact health, readiness, ammo, and experience weighting formulas remain undefined.
+The target retains its posture; posture is not averaged or inherited from the source. For example:
+
+```text
+Defensive target + Maneuver source → Defensive target
+Maneuver target + Defensive source → Maneuver target
+```
+
+The target also retains its runtime identity, owner, `UnitDefinition`, and position. Owner, `UnitDefinition`, and tile are already compatibility constraints. If `KEEP_REMAINDER` leaves a surviving source, that source retains its own runtime identity, posture, remaining composition, and associated state.
+
+As a general principle, formation-level runtime state follows the target unless that state explicitly defines different Merge semantics. Future state such as suppression, detection, disruption, temporary benefits or penalties, or fortification may require individual Merge rules; these are possibilities rather than current mechanics. The model does not assume that every temporary state transfers, disappears, averages, or follows health proportionally.
+
+Merge must never improve the current-turn action eligibility of either participating formation. It cannot restore or duplicate movement, attacks, actions, or other opportunities already consumed during the current turn. If `KEEP_REMAINDER` leaves the source alive, it retains its already-consumed action state. The target does not become more permissive merely because it absorbed source contribution, and `DISBAND_REMAINDER` does not recover or transfer spent action opportunities.
+
+Conceptually:
+
+> resources may be consolidated; spent action opportunities may not.
+
+The `source → target` direction therefore has real runtime meaning rather than being cosmetic.
+
+The exact action cost and turn sequencing of Merge remain unresolved. This includes whether Merge consumes a complete action, movement, or Readiness; whether it ends a unit's turn; whether it may occur before or after an attack; whether multiple Merges are allowed in one turn; and other sequencing details. The future turn and action-economy model, together with the `Ruleset`, may constrain when Merge is permitted, its costs, its relationship to movement and combat, repeated Merges, and other eligibility conditions.
 
 ## 26. Movement
 
@@ -989,10 +1036,13 @@ The following areas remain intentionally unresolved:
 - fallback combat costs and damage formulas;
 - exact experience thresholds and rank modifiers;
 - exact operational-efficiency benefits from rank, if any;
-- merge formulas and excess health or capacity behavior;
-- exact readiness and ammo weighting during merge;
-- exact experience weighting during merge;
-- resulting posture and treatment of other runtime state during merge;
+- exact proportional-transfer formulas and rounding behavior during Merge;
+- exact Readiness consolidation calculation under `DISBAND_REMAINDER`;
+- exact experience weighting and rank/progress recalculation during Merge;
+- exact treatment of future temporary runtime state during Merge;
+- exact Merge action cost;
+- Merge timing and sequencing within a turn;
+- Ruleset restrictions on repeated Merges;
 - posture-change timing and exact `Defensive` bonuses and penalties;
 - whether voluntarily attacking while `Defensive` changes posture;
 - whether and when multiple attacks or weapons are introduced;
@@ -1045,7 +1095,7 @@ Runtime Match
 └── Outcome
 ```
 
-Merge remains an interaction between compatible UnitInstances that produces one consolidated UnitInstance, rather than a new persistent entity in this structural summary.
+Merge remains a directed interaction that consolidates source contribution into a continuing target `UnitInstance`, rather than normally producing a new third entity. A partial Merge may leave the source `UnitInstance` in play under `KEEP_REMAINDER`.
 
 The central design principle remains:
 
