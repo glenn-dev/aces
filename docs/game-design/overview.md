@@ -251,19 +251,75 @@ This remains conceptual.
 
 The goal is not to build a generic rules engine prematurely, but to avoid coupling all gameplay decisions directly to the `Match` entity.
 
-## 11. Turn Ownership
+## 11. Turn Ownership and Unit Activation
 
 The original brainstorm proposed turns by republic.
 
-Under the current model, the more precise concept is that a turn may belong to a `MatchPolity`, not directly to an individual user.
+Under the current model, a turn belongs conceptually to a `MatchPolity`, not to a `User`, `Team`, or `UnitInstance`.
 
 ```text
 TurnOwner = MatchPolity
 ```
 
-If multiple users manage the same Polity, they may share the same action window while control assignments determine who may operate which entities.
+Conceptually:
 
-Alternative turn models remain open.
+```text
+Match
+  ↓
+active MatchPolity
+  ↓
+eligible UnitInstances
+  ↓
+Unit Activations
+```
+
+Users operate entities through the participation, permissions, and control relationships already described. User identity does not own the game turn, and changing control between users does not create a new turn or refresh a unit. This separation supports human-controlled and NPC-controlled MatchPolities as well as future delegated or shared control models.
+
+During its turn, a `MatchPolity` may activate eligible `UnitInstances` in an order permitted by the `Ruleset`. Each unit normally has one activation opportunity per turn of its `MatchPolity`. A Unit Activation is the operational opportunity of that formation during that turn:
+
+```text
+Unit Activation
+├── optional Posture change
+├── optional Movement
+├── optional Primary Action
+└── End Activation
+```
+
+This diagram describes available conceptual capabilities, not a mandatory fixed execution order. A Unit Activation is not a generic Action Point pool, and no numeric Action Points are introduced.
+
+A unit normally cannot begin a second activation during the same `MatchPolity` turn unless an explicit future rule permits it. Its activation eligibility resets when the appropriate next turn for its `MatchPolity` begins, not when operational control changes between users.
+
+### Movement and Primary Action
+
+Movement and Primary Action are distinct, optional parts of a Unit Activation. Movement represents traversal of a valid path and may cross multiple neighboring tiles and Connections. It remains governed by movement capability, Readiness, Posture, world state, Connections, movement cost, and `Ruleset` constraints; it is not a sequence of generic action points.
+
+A Primary Action is the unit's principal tactical action and may normally be consumed at most once per activation. The currently known Primary Actions are Attack and Merge. Other Primary Actions may be introduced later, but are not current mechanics.
+
+A unit may voluntarily end its activation without using its available Movement, Primary Action, or Posture change opportunity.
+
+### Sequencing and End Activation
+
+Movement does not automatically end an activation. After completing valid Movement, a unit may retain its Primary Action when that specific action and the `Ruleset` permit it. Each Primary Action may define its own sequencing restrictions; this does not establish a universal action-sequencing system.
+
+The default Attack sequence permits Movement followed by Attack when all movement, targeting, combat, and `Ruleset` constraints are satisfied:
+
+```text
+Movement → Attack → End Activation
+```
+
+Attack followed by Movement is not permitted by default. Attack normally ends the Unit Activation, so a unit that attacks before moving does not then gain a movement opportunity.
+
+Merge is also a Primary Action, so Attack and Merge cannot normally both occur during one activation. Its specific sequencing and effects on participating units are refined in the Unit Merge section.
+
+Once a Primary Action has ended an activation, the unit cannot subsequently move, change Posture, perform another Primary Action, or voluntarily reopen that activation. This does not require every possible future Primary Action to end activation; future actions may define different semantics.
+
+A unit may also explicitly end its activation and forgo any unused opportunities. Once completed, the activation cannot normally be reopened, and the unit cannot normally activate again during the same `MatchPolity` turn. Only an explicit future `Ruleset` rule may override this.
+
+More generally, no operation should improve current-turn action eligibility merely by transforming, merging, transferring, or otherwise changing a `UnitInstance`:
+
+> state or resource changes do not restore spent action opportunities.
+
+The complete match turn lifecycle, higher-level ordering, and exact action-state representation remain open.
 
 ## 12. Map and World
 
@@ -694,7 +750,35 @@ UnitPosture
 
 `Defensive` conceptually provides increased resistance to incoming damage, lower passive or base readiness consumption, reduced movement capability, increased readiness cost when moving, and potentially reduced offensive effectiveness.
 
-No exact posture bonuses, penalties, percentages, or thresholds are defined. It also remains open whether posture may be selected after movement, at the beginning or end of an action window, or at another ruleset-defined point. Whether voluntarily attacking while `Defensive` changes posture or instead applies an offensive penalty is also unresolved.
+No exact posture bonuses, penalties, percentages, or thresholds are defined.
+
+Changing Posture is an operational choice within a Unit Activation, not a Primary Action, and therefore does not itself consume the unit's Primary Action. By default, a unit may change Posture at most once during its activation unless a future `Ruleset` explicitly permits otherwise. This prevents repeated switching such as `Defensive → Maneuver → Defensive` merely to obtain advantages of both states. No numeric cost is currently assigned; a future `Ruleset` may impose a Readiness cost or another restriction.
+
+The Posture relevant to an operation is the Posture held when that operation occurs. Movement performed while `Defensive` uses Defensive movement semantics and costs; changing to `Maneuver` afterward does not retroactively alter that Movement. An Attack performed while `Defensive` uses the applicable Defensive offensive penalty and does not itself change the unit's Posture. Defensive does not absolutely prohibit Movement followed by Attack; its established movement, Readiness, and offensive consequences apply subject to `Ruleset` refinement.
+
+Illustrative sequences include:
+
+```text
+Defensive
+  → change to Maneuver
+  → Movement
+  → Attack
+  → activation ends in Maneuver
+
+Defensive
+  → Movement under Defensive semantics
+  → Attack under Defensive offensive semantics
+  → activation ends in Defensive
+
+Maneuver
+  → Movement
+  → change to Defensive
+  → End Activation
+```
+
+These examples are not mandatory workflows.
+
+Posture persists across activations and turns. A unit does not automatically reset to `Maneuver` when its activation ends, its `MatchPolity` turn ends, another `MatchPolity` becomes active, or its next activation begins. Ending an activation in `Defensive` therefore leaves Defensive relevant during subsequent enemy activity, including incoming combat. Passive or current Posture effects use the unit's persistent current Posture.
 
 ## 23. Ammo and Fallback Combat
 
@@ -754,7 +838,7 @@ effective defense
 
 This relationship is conceptual, not a final formula, and does not require the factors to combine multiplicatively.
 
-Retaliation is currently a reactive consequence of an attack, not a separate voluntary action selected by the defending player:
+Retaliation is currently a reactive consequence of an attack, not a separate voluntary action selected by the defending player, Primary Action, or Unit Activation:
 
 ```text
 Attack
@@ -771,6 +855,8 @@ if eligible, defensive-response damage to attacker
 Retaliation occurs only when the defender survives the initial damage, the attacker's hex distance falls within the defender's valid attack range, the attacker belongs to a TargetClass the defender can normally target, and all other relevant rules permit the response. Targeting restrictions remain preserved independently from spatial range.
 
 The defender retaliates using its state after receiving the initial attack. A destroyed defender does not retaliate; damage sustained from the first strike may reduce the surviving defender's response effectiveness.
+
+Retaliation does not consume a separate activation opportunity under the current conceptual model.
 
 The same broader action-and-consequence model may later support other reactive effects, but defensive fire, mines, interception, fortifications, and similar possibilities are not current mechanics.
 
@@ -873,7 +959,9 @@ The target also retains its runtime identity, owner, `UnitDefinition`, and posit
 
 As a general principle, formation-level runtime state follows the target unless that state explicitly defines different Merge semantics. Future state such as suppression, detection, disruption, temporary benefits or penalties, or fortification may require individual Merge rules; these are possibilities rather than current mechanics. The model does not assume that every temporary state transfers, disappears, averages, or follows health proportionally.
 
-Merge must never improve the current-turn action eligibility of either participating formation. It cannot restore or duplicate movement, attacks, actions, or other opportunities already consumed during the current turn. If `KEEP_REMAINDER` leaves the source alive, it retains its already-consumed action state. The target does not become more permissive merely because it absorbed source contribution, and `DISBAND_REMAINDER` does not recover or transfer spent action opportunities.
+Merge is a Primary Action. Attack and Merge therefore cannot normally both be performed during one activation. Merge normally ends the target `UnitInstance`'s activation.
+
+Merge must never improve the current-turn action eligibility of either participating formation. It cannot restore spent Movement, restore a spent Primary Action, grant another activation, or duplicate other opportunities already consumed during the current turn. If `KEEP_REMAINDER` leaves the source alive, its activation state is not reset and already-consumed opportunities remain consumed. The target does not become more permissive merely because it absorbed source contribution, and `DISBAND_REMAINDER` does not recover or transfer spent action opportunities. No additional rule is established here for opportunities a surviving source had not yet consumed.
 
 Conceptually:
 
@@ -881,11 +969,13 @@ Conceptually:
 
 The `source → target` direction therefore has real runtime meaning rather than being cosmetic.
 
-The exact action cost and turn sequencing of Merge remain unresolved. This includes whether Merge consumes a complete action, movement, or Readiness; whether it ends a unit's turn; whether it may occur before or after an attack; whether multiple Merges are allowed in one turn; and other sequencing details. The future turn and action-economy model, together with the `Ruleset`, may constrain when Merge is permitted, its costs, its relationship to movement and combat, repeated Merges, and other eligibility conditions.
+Beyond its use of the Primary Action and its normal ending of the target's activation, the exact action cost and sequencing of Merge remain unresolved. The future turn and action-economy model, together with the `Ruleset`, may constrain when Merge is permitted, any Movement or Readiness implications, its relationship to other operations, repeated Merges, and other eligibility conditions.
 
 ## 26. Movement
 
 Movement range is not attack range. Attack range evaluates spatial eligibility between an attacker and a target; movement is a traversal problem through the mutable world.
+
+Within a Unit Activation, Movement is optional and remains distinct from the unit's optional Primary Action. It is not represented as a sequence of generic action points. Completing valid Movement does not by itself end the activation, though any subsequent Primary Action remains subject to that action's sequencing rules and the `Ruleset`.
 
 A movement path traverses a sequence of neighboring tiles through their Connections:
 
@@ -983,6 +1073,8 @@ cost / consequence
 new world state
 ```
 
+`Action` in this broad state-change model is not synonymous with `Primary Action` within a Unit Activation. Movement remains a distinct activation capability, while Retaliation remains a reactive combat consequence.
+
 This is both a gameplay model and one of the broader abstractions Aces intends to explore.
 
 ## 28. Events
@@ -1006,7 +1098,14 @@ The following areas remain intentionally unresolved:
 - final naming around Polity runtime instances;
 - NPC behavior, turn participation, resources, diplomacy, automation, and the eventual controller model;
 - team size and composition limits;
-- turn ownership and whether turns are sequential or phase-based;
+- complete Match turn lifecycle;
+- exact ordering of MatchPolities and whether the higher-level turn structure is sequential, simultaneous, or phase-based;
+- initiative system, if any;
+- how a MatchPolity declares or finishes its turn;
+- exact activation-eligibility reset implementation and action-state representation;
+- whether all eligible units must activate before a MatchPolity may end its turn;
+- Ruleset exceptions for multiple activations;
+- detailed sequencing rules for future Primary Actions;
 - victory-condition model;
 - exact ruleset boundaries;
 - tile behavior exactly at sea level;
@@ -1043,8 +1142,8 @@ The following areas remain intentionally unresolved:
 - exact Merge action cost;
 - Merge timing and sequencing within a turn;
 - Ruleset restrictions on repeated Merges;
-- posture-change timing and exact `Defensive` bonuses and penalties;
-- whether voluntarily attacking while `Defensive` changes posture;
+- exact cost and other Ruleset restrictions for changing Posture;
+- exact `Defensive` bonuses and penalties;
 - whether and when multiple attacks or weapons are introduced;
 - damage types, if a concrete gameplay need emerges;
 - resources and economy;
@@ -1091,8 +1190,25 @@ Runtime Match
 │   │   └── runtime state
 │   └── Events
 ├── TurnState
+│   ├── active MatchPolity
+│   └── Unit Activations
+│       ├── optional Posture change
+│       ├── optional Movement
+│       ├── optional Primary Action
+│       └── End Activation
 ├── Ruleset
 └── Outcome
+```
+
+Conceptually:
+
+```text
+Match
+  → active MatchPolity
+  → eligible UnitInstances
+  → Unit Activations
+  → Movement / Posture / Primary Action
+  → resulting runtime state
 ```
 
 Merge remains a directed interaction that consolidates source contribution into a continuing target `UnitInstance`, rather than normally producing a new third entity. A partial Merge may leave the source `UnitInstance` in play under `KEEP_REMAINDER`.
