@@ -7,6 +7,8 @@
 > It is a working design checkpoint, not a frozen specification.
 > Detailed mechanics, formulas, balance values, naming, and implementation choices remain subject to iteration.
 
+`Last reviewed` means the date the document's conceptual content was last reviewed or materially updated, not necessarily the date of the Git commit.
+
 ## 1. Purpose of This Document
 
 This document describes the current game-design model that has emerged from early brainstorming and design discussions.
@@ -16,6 +18,17 @@ It exists to preserve the concepts and decisions that are already coherent enoug
 The durable purpose and principles of the project belong in `genesis.md`. Raw, unfiltered ideation belongs in `brainstorm.md`.
 
 Within this document, statements expressed as the current model are agreed conceptual decisions. Provisional assumptions identify simplifying rules intended for an initial ruleset, while open questions identify details that have deliberately not been settled.
+
+## Documentation Map and Authority
+
+- [Genesis](../../genesis.md) contains durable project intent and boundaries.
+- [Game Design Overview](overview.md) contains the integrated current game model, cross-domain relationships, navigation, and concise domain summaries.
+- [Match Lifecycle](match-lifecycle.md) contains canonical detailed design for the Match, Round, MatchPolity turn, and Unit Activation lifecycle.
+- [Brainstorm](../../brainstorm.md) preserves historical ideation and provenance. It is non-normative and is not current design.
+
+Overview summaries do not compete with specialized documents. A specialized document owns detailed current design within its declared scope. If an overview summary conflicts with canonical domain detail, that discrepancy is a documentation defect and should be corrected. Genesis remains authoritative for durable project intent and boundaries.
+
+Canonical means authoritative for the current evolving design within a document's declared scope; it does not mean frozen or final. Exploratory means that the current design may evolve, not that its current agreed design is non-authoritative. A specialized document may therefore be both exploratory and canonical within its domain.
 
 ## 2. Core Runtime Model
 
@@ -253,155 +266,31 @@ The goal is not to build a generic rules engine prematurely, but to avoid coupli
 
 ## 11. Round, Turn Opportunities, and Unit Activation
 
-The original brainstorm proposed turns by republic.
+This section is an integrated, non-exhaustive summary. Detailed canonical lifecycle design is maintained in [Match Lifecycle](match-lifecycle.md).
 
-Under the current model, a `Round` is the global temporal cycle within a `Match`, above any individual `MatchPolity` turn. It is systemic Match time, not a player-controlled action or a Unit Activation.
-
-Conceptually:
+A `Round` is the global temporal cycle within a `Match`. World Resolution occurs before the Round establishes its normal Turn Opportunities. A Turn Opportunity belongs conceptually to a `MatchPolity`, not to a `User`, `Team`, or `UnitInstance`.
 
 ```text
 Match
-└── Round
-    ├── World Resolution
-    ├── Turn Opportunities / MatchPolity Turns
-    └── Round completion
+  → Round
+  → World Resolution
+  → Turn Opportunities
+  → MatchPolity Turn
+      → Begin Turn Resolution
+      → Activation Window
+      → End Turn Resolution
+  → Round completion
 ```
 
-A Round normally represents a cycle in which the MatchPolities eligible when its normal opportunities are established receive their corresponding Turn Opportunities. The initial model is sequential, but neither initiative nor the exact ordering or selection of MatchPolities is defined yet.
-
-### World Resolution
-
-A Round begins with World Resolution, before the first `MatchPolity` turn. World Resolution processes global or world-scoped recurring state and Events.
-
-Weather is conceptually a World-scoped Event and should normally evolve once per Round rather than once per `MatchPolity` turn. This prevents adding MatchPolities from artificially accelerating global world evolution. Exact World Resolution ordering, weather probabilities, climate simulation, and event algorithms remain undefined.
-
-### Turn Opportunities and Round Snapshot
-
-After World Resolution, the Round establishes its normal `TurnOpportunity` instances as a logical snapshot. Only MatchPolities eligible at that point receive a normal Turn Opportunity. The existence of a `MatchPolity` and its eligibility for a Turn Opportunity are distinct concepts; the exact eligibility and elimination conditions remain open.
-
-A Turn Opportunity belongs to a `MatchPolity`, not to a `User` or one of the Polity's controlled entities. Ownership or control changes do not create new Turn Opportunities. The Turn Opportunity is also distinct from the activation state of any `UnitInstance`.
-
-Its normal lifecycle is:
+A Turn Opportunity normally follows:
 
 ```text
 pending → active → completed
 ```
 
-A pending opportunity may instead be resolved through cancellation:
+A pending opportunity may instead become `cancelled`; both completed and cancelled opportunities are terminal for the Round. A MatchPolity Turn consists of Begin Turn Resolution, an Activation Window, and End Turn Resolution. A MatchPolity may end its turn without activating every eligible unit.
 
-```text
-pending → cancelled
-```
-
-Both `completed` and `cancelled` are terminal states for that Round. Under the initial sequential model, only one Turn Opportunity is active at a time. This does not prohibit a future `Ruleset` from deliberately using a different higher-level turn model.
-
-If a MatchPolity with a pending Turn Opportunity becomes ineligible before its turn, that opportunity becomes `cancelled`. If a new MatchPolity appears or becomes eligible after the normal opportunities have been established, it does not automatically receive a normal Turn Opportunity in the current Round. It may receive one in the following Round if eligible when that Round's snapshot is established. This keeps normal Round membership stable and prevents implicit extra turns.
-
-A future `Ruleset` may deliberately create an extraordinary Turn Opportunity during an active Round, but its mechanics remain undefined.
-
-### MatchPolity Turn Lifecycle
-
-Once a pending Turn Opportunity is selected, it becomes active and its `MatchPolity` turn follows this conceptual lifecycle:
-
-```text
-pending Turn Opportunity
-  → active
-  → Begin Turn Resolution
-  → Activation Window
-  → End Turn Resolution
-  → completed
-```
-
-The turn belongs conceptually to a `MatchPolity`, not to a `User`, `Team`, or `UnitInstance`.
-
-```text
-TurnOwner = MatchPolity
-```
-
-Users operate entities through the participation, permissions, and control relationships already described. User identity does not own the game turn, and changing control between users does not create a new turn, Turn Opportunity, or refreshed Unit Activation. This separation supports human-controlled and NPC-controlled MatchPolities as well as future delegated or shared control models.
-
-### Begin Turn Resolution
-
-Begin Turn Resolution occurs before determining which `UnitInstances` may activate. It processes MatchPolity- or entity-specific recurring state, including established conceptual responsibilities such as:
-
-- passive Readiness consumption;
-- Posture-dependent passive Readiness behavior;
-- recurring consequences of `Readiness = 0`;
-- other future `Ruleset`-defined recurring effects.
-
-These responsibilities do not imply additional maintenance mechanics. Relevant state is stabilized before the player acts. A unit destroyed or rendered ineligible during Begin Turn Resolution does not subsequently receive an activation opportunity for that turn.
-
-### Activation Window and End Turn Resolution
-
-After Begin Turn Resolution stabilizes relevant state, the game determines eligible `UnitInstances` and opens the Activation Window. During that window, the MatchPolity may use Unit Activations according to the semantics below.
-
-A MatchPolity is not required to activate every eligible UnitInstance before ending its turn. It may voluntarily finish the turn; unused Unit Activation opportunities then expire for that MatchPolity turn and do not carry into the next Round.
-
-End Turn Resolution exists conceptually. For now, its minimum responsibilities are to close the Activation Window, finalize strictly turn-scoped state, and complete the active Turn Opportunity. Additional End Turn effects remain undefined.
-
-### Round Completion
-
-After a MatchPolity turn completes, its active Turn Opportunity becomes `completed`. If pending opportunities remain, another pending Turn Opportunity may be selected. If no pending or active opportunities remain, the Round may complete; both completed and cancelled opportunities count as resolved.
-
-A new Round establishes its own Turn Opportunities. A MatchPolity does not retain a permanent “has acted” state merely because it acted in a previous Round.
-
-### Unit Activation
-
-Within an active MatchPolity turn:
-
-```text
-Activation Window
-  ↓
-eligible UnitInstances
-  ↓
-Unit Activations
-```
-
-During its turn, a `MatchPolity` may activate eligible `UnitInstances` in an order permitted by the `Ruleset`. Each unit normally has one activation opportunity per turn of its `MatchPolity`. A Unit Activation is the operational opportunity of that formation during that turn:
-
-```text
-Unit Activation
-├── optional Posture change
-├── optional Movement
-├── optional Primary Action
-└── End Activation
-```
-
-This diagram describes available conceptual capabilities, not a mandatory fixed execution order. A Unit Activation is not a generic Action Point pool, and no numeric Action Points are introduced.
-
-A unit normally cannot begin a second activation during the same `MatchPolity` turn unless an explicit future rule permits it. Its activation eligibility resets when the appropriate next turn for its `MatchPolity` begins, not when operational control changes between users.
-
-### Movement and Primary Action
-
-Movement and Primary Action are distinct, optional parts of a Unit Activation. Movement represents traversal of a valid path and may cross multiple neighboring tiles and Connections. It remains governed by movement capability, Readiness, Posture, world state, Connections, movement cost, and `Ruleset` constraints; it is not a sequence of generic action points.
-
-A Primary Action is the unit's principal tactical action and may normally be consumed at most once per activation. The currently known Primary Actions are Attack and Merge. Other Primary Actions may be introduced later, but are not current mechanics.
-
-A unit may voluntarily end its activation without using its available Movement, Primary Action, or Posture change opportunity.
-
-### Sequencing and End Activation
-
-Movement does not automatically end an activation. After completing valid Movement, a unit may retain its Primary Action when that specific action and the `Ruleset` permit it. Each Primary Action may define its own sequencing restrictions; this does not establish a universal action-sequencing system.
-
-The default Attack sequence permits Movement followed by Attack when all movement, targeting, combat, and `Ruleset` constraints are satisfied:
-
-```text
-Movement → Attack → End Activation
-```
-
-Attack followed by Movement is not permitted by default. Attack normally ends the Unit Activation, so a unit that attacks before moving does not then gain a movement opportunity.
-
-Merge is also a Primary Action, so Attack and Merge cannot normally both occur during one activation. Its specific sequencing and effects on participating units are refined in the Unit Merge section.
-
-Once a Primary Action has ended an activation, the unit cannot subsequently move, change Posture, perform another Primary Action, or voluntarily reopen that activation. This does not require every possible future Primary Action to end activation; future actions may define different semantics.
-
-A unit may also explicitly end its activation and forgo any unused opportunities. Once completed, the activation cannot normally be reopened, and the unit cannot normally activate again during the same `MatchPolity` turn. Only an explicit future `Ruleset` rule may override this.
-
-More generally, no operation should improve current-turn action eligibility merely by transforming, merging, transferring, or otherwise changing a `UnitInstance`:
-
-> state or resource changes do not restore spent action opportunities.
-
-The exact action-state representation remains open.
+Each eligible `UnitInstance` normally has one activation opportunity per turn of its `MatchPolity`. Movement and a Primary Action are distinct optional activation capabilities, and spent action opportunities are not refreshed by state or resource transformations. The Round may complete once no pending or active Turn Opportunities remain.
 
 ## 12. Map and World
 
@@ -1041,23 +930,15 @@ The target also retains its runtime identity, owner, `UnitDefinition`, and posit
 
 As a general principle, formation-level runtime state follows the target unless that state explicitly defines different Merge semantics. Future state such as suppression, detection, disruption, temporary benefits or penalties, or fortification may require individual Merge rules; these are possibilities rather than current mechanics. The model does not assume that every temporary state transfers, disappears, averages, or follows health proportionally.
 
-Merge is a Primary Action. Attack and Merge therefore cannot normally both be performed during one activation. Merge normally ends the target `UnitInstance`'s activation.
-
-Merge must never improve the current-turn action eligibility of either participating formation. It cannot restore spent Movement, restore a spent Primary Action, grant another activation, or duplicate other opportunities already consumed during the current turn. If `KEEP_REMAINDER` leaves the source alive, its activation state is not reset and already-consumed opportunities remain consumed. The target does not become more permissive merely because it absorbed source contribution, and `DISBAND_REMAINDER` does not recover or transfer spent action opportunities. No additional rule is established here for opportunities a surviving source had not yet consumed.
-
-Conceptually:
-
-> resources may be consolidated; spent action opportunities may not.
+Merge's activation completion, sequencing, and spent-opportunity behavior are defined in [Match Lifecycle](match-lifecycle.md#sequencing-and-end-activation).
 
 The `source → target` direction therefore has real runtime meaning rather than being cosmetic.
-
-Beyond its use of the Primary Action and its normal ending of the target's activation, the exact action cost and sequencing of Merge remain unresolved. The future turn and action-economy model, together with the `Ruleset`, may constrain when Merge is permitted, any Movement or Readiness implications, its relationship to other operations, repeated Merges, and other eligibility conditions.
 
 ## 26. Movement
 
 Movement range is not attack range. Attack range evaluates spatial eligibility between an attacker and a target; movement is a traversal problem through the mutable world.
 
-Within a Unit Activation, Movement is optional and remains distinct from the unit's optional Primary Action. It is not represented as a sequence of generic action points. Completing valid Movement does not by itself end the activation, though any subsequent Primary Action remains subject to that action's sequencing rules and the `Ruleset`.
+Movement's place within Unit Activation and its relationship to Primary Actions are defined in [Match Lifecycle](match-lifecycle.md#movement-and-primary-action). This section owns traversal through the mutable world.
 
 A movement path traverses a sequence of neighboring tiles through their Connections:
 
@@ -1177,25 +1058,13 @@ Event probability may eventually depend on context and current state rather than
 
 ## 29. Current Open Questions
 
-The following areas remain intentionally unresolved:
+Lifecycle-specific unresolved questions are maintained in [Match Lifecycle](match-lifecycle.md#current-open-questions). The following cross-domain questions and questions for domains that have not yet been extracted remain intentionally unresolved here:
 
 - final role vocabulary for users;
 - exact semantics of moderation and administration;
 - final naming around Polity runtime instances;
 - NPC behavior, turn participation, resources, diplomacy, automation, and the eventual controller model;
 - team size and composition limits;
-- exact World Resolution ordering and processing details;
-- exact ordering of MatchPolities within a Round;
-- fixed versus calculated MatchPolity order;
-- exact selection algorithm for a pending Turn Opportunity;
-- detailed simultaneous or phase-based alternatives to the initial sequential model;
-- initiative system, if any;
-- exact MatchPolity eligibility and elimination rules;
-- extraordinary Turn Opportunity mechanics;
-- exact activation-eligibility reset implementation and action-state representation;
-- Ruleset exceptions for multiple activations;
-- detailed sequencing rules for future Primary Actions;
-- additional End Turn Resolution effects;
 - victory-condition model and timing;
 - exact ruleset boundaries;
 - tile behavior exactly at sea level;
@@ -1229,9 +1098,6 @@ The following areas remain intentionally unresolved:
 - exact Readiness consolidation calculation under `DISBAND_REMAINDER`;
 - exact experience weighting and rank/progress recalculation during Merge;
 - exact treatment of future temporary runtime state during Merge;
-- exact Merge action cost;
-- Merge timing and sequencing within a turn;
-- Ruleset restrictions on repeated Merges;
 - exact cost and other Ruleset restrictions for changing Posture;
 - exact `Defensive` bonuses and penalties;
 - whether and when multiple attacks or weapons are introduced;
@@ -1246,6 +1112,8 @@ The following areas remain intentionally unresolved:
 These questions should be resolved progressively through game-design iteration rather than prematurely frozen.
 
 ## 30. Current Design Direction
+
+This section is a system-wide synopsis and integration view, not an independent detailed specification. [Match Lifecycle](match-lifecycle.md) is canonical for lifecycle detail.
 
 ```text
 Persistent Definitions
@@ -1282,20 +1150,7 @@ Runtime Match
 │   └── Events
 ├── Rounds
 │   ├── World Resolution
-│   ├── Turn Opportunities
-│   │   ├── pending
-│   │   ├── active
-│   │   ├── completed
-│   │   └── cancelled
-│   ├── MatchPolity Turn
-│   │   ├── Begin Turn Resolution
-│   │   ├── Activation Window
-│   │   │   └── Unit Activations
-│   │   │       ├── optional Posture change
-│   │   │       ├── optional Movement
-│   │   │       ├── optional Primary Action
-│   │   │       └── End Activation
-│   │   └── End Turn Resolution
+│   ├── Turn Opportunities / MatchPolity Turns
 │   └── Round completion
 ├── Ruleset
 └── Outcome
@@ -1307,13 +1162,7 @@ Conceptually:
 Match
   → Round
   → World Resolution
-  → establish Turn Opportunities
-  → select a pending Turn Opportunity
-  → MatchPolity Turn
-  → Begin Turn Resolution
-  → Activation Window
-  → Unit Activations
-  → End Turn Resolution
+  → Turn Opportunities / MatchPolity Turns
   → Round completion
 ```
 
