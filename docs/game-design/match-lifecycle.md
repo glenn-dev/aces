@@ -1,7 +1,7 @@
 # Aces — Match Lifecycle
 
 **Status:** Exploratory  
-**Last reviewed:** 2026-09-08  
+**Last reviewed:** 2026-09-20<br>
 **Responsibility:** Define the current temporal gameplay lifecycle within a Match, from Round start through Round completion.  
 **Canonical for:** Detailed lifecycle phases, TurnOpportunity semantics, activation sequencing, and spent-opportunity invariants.  
 **Depends on:** [Match](overview.md#9-match), [ownership and control](overview.md#8-ownership-vs-control), [Ruleset](overview.md#10-ruleset), [Readiness and Unit Posture](overview.md#22-readiness-and-unit-posture), [Unit Merge](overview.md#unit-merge), [Movement](overview.md#26-movement), and [Events](overview.md#28-events).  
@@ -37,9 +37,47 @@ A Round normally represents a cycle in which the MatchPolities eligible when its
 
 ### World Resolution
 
-A Round begins with World Resolution, before the first `MatchPolity` turn. World Resolution processes global or world-scoped recurring state and Events.
+World Resolution occurs once at the beginning of each Round, before normal `TurnOpportunity` instances are established. It processes global or world-scoped recurring state and Events, then finishes with a resolved World state from which the Round takes its normal Turn Opportunity snapshot.
 
-Weather is conceptually a World-scoped Event and should normally evolve once per Round rather than once per `MatchPolity` turn. This prevents adding MatchPolities from artificially accelerating global world evolution. Exact World Resolution ordering, weather probabilities, climate simulation, and event algorithms remain undefined.
+Its conceptual order is:
+
+```text
+current World
+  → advance existing world state and active Events
+  → resolve expirations and transitions
+  → evaluate new Event triggers
+  → resolve resulting consequences and interactions
+  → stabilize World
+  → establish normal Turn Opportunities
+```
+
+Existing persistent state and active Events are processed before new Event triggers are evaluated. An active Event may evolve to another state or phase without ending and being triggered again. New triggers evaluate against the World produced by prior progression, transitions, and expirations, and their consequences may be applied during the same World Resolution before Turn Opportunities are established.
+
+This is conceptual lifecycle ordering. It does not determine whether Events are technically processed serially, in batches, through dependency relationships, with queues or transactions, or by another mechanism. It also does not define probabilities, durations, formulas, weather simulation, generic Event priorities, conflict algorithms, or hidden implementation ordering.
+
+World Resolution does not process `MatchPolity`-specific maintenance. That remains a responsibility of Begin Turn Resolution.
+
+#### Event State and Consequences During World Resolution
+
+The following Event concepts are defined here only as far as World Resolution requires them. They do not constitute the complete Events-domain design.
+
+Conceptually, an `EventDefinition` supplies the Ruleset-defined identity and rules for an `EventInstance`. An `EventInstance` exists at runtime and may maintain enough state to represent progression across multiple Rounds, including phases or states that transition during World Resolution. Persistence and multiple phases are not required for every Event: an instantaneous Event may begin, produce consequences, and finish within one World Resolution.
+
+An Event represents what is occurring or occurred. Its consequences represent the changes or modifiers it produces in the World or its entities. Ending an `EventInstance` does not by itself revert every consequence. A temporary consequence tied to the active Event may disappear when it ends, while a persistent World mutation may remain.
+
+Events and their consequences may concern tiles, regions, Connections, Structures, or other relevant World state without requiring a separate Event concept for each target type. The `Ruleset` determines which Events may exist and how they evolve and produce consequences, but the technical representation of those rules remains undefined. The model does not yet define generic Event chains, though it does not prevent one Event from later enabling or causing another when explicit rules are introduced.
+
+#### Event Interaction and World Stabilization
+
+Events may interact when their scopes or consequences affect overlapping World state. Any relevant interaction or conflict must follow explicit domain or `Ruleset` semantics rather than accidental iteration or implementation order. Rules may define coexistence, exclusion, replacement, combination, or priority where a specific interaction needs it; this does not establish a generic Event-priority system.
+
+A consequence produced during World Resolution may affect the evaluation of a later consequence when an explicit rule requires that relationship. Neither universal independence nor universal sequential execution is assumed. An Event or consequence may also invalidate another pending Event when the `Ruleset` explicitly defines that result.
+
+World Resolution ends only after all processing belonging to that World Resolution has produced a resolved, stable World state, which becomes the observable basis for the rest of the Round. Stable means that the work assigned to the current resolution has been resolved; it does not mean recursively executing every possible future consequence until an absolute equilibrium is reached. Consequences that explicitly belong to a later Round remain pending or persistent and are not pulled into the current Round merely because they could be calculated.
+
+Given the same relevant World state, active `EventInstances`, `Ruleset`, and already-determined random outcomes, World Resolution should produce the same result. Hidden implementation ordering must not change the gameplay outcome. The normal Turn Opportunity snapshot is established only after this stabilization; eligibility changes after the snapshot continue to follow the Turn Opportunity semantics below.
+
+Weather is conceptually a World-scoped Event and should normally evolve once per Round rather than once per `MatchPolity` turn. This prevents adding MatchPolities from artificially accelerating global world evolution. Technical World Resolution processing, weather probabilities, climate simulation, and Event algorithms remain undefined.
 
 World Resolution owns the lifecycle placement of that processing, not the complete [Events](overview.md#28-events) domain.
 
@@ -187,7 +225,7 @@ Beyond its use of the Primary Action and its normal ending of the target's activ
 
 The following lifecycle areas remain intentionally unresolved:
 
-- exact World Resolution ordering and processing details;
+- technical World Resolution processing mechanisms, including serial, batch, dependency-based, queue-based, transactional, or other implementation models;
 - exact ordering of MatchPolities within a Round;
 - fixed versus calculated MatchPolity order;
 - exact selection algorithm for a pending Turn Opportunity;
